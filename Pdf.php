@@ -19,9 +19,6 @@ class Pdf extends Component
     /** @var array $options */
     public $options = [];
 
-    /** @var string $tmpFile */
-    protected $tmpFile = '';
-
     /** @var string $params */
     protected $params = '';
 
@@ -31,8 +28,8 @@ class Pdf extends Component
     /** @var string $inputSource */
     protected $inputSource = '';
 
-    /** @var string $inputHtml */
-    protected $inputHtml = '';
+    /** @var string $tmpInputFile */
+    protected $tmpInputFile = '';
 
     /** @var string $outputSource */
     protected $outputSource = '';
@@ -54,8 +51,17 @@ class Pdf extends Component
         $this->initOptions();
         $this->buildParams();
 
+        $this->tmpDir = rtrim(Yii::getAlias($this->tmpDir), '/') . '/';
+        if (!is_dir($this->tmpDir)) {
+            mkdir($this->tmpDir, 0755, true);
+        }
+
         register_shutdown_function(function () {
-            unlink($this->tmpFile);
+            if ($this->tmpInputFile !== '') {
+                unlink($this->tmpInputFile);
+            }
+
+            unlink($this->outputSource);
         });
     }
 
@@ -65,8 +71,16 @@ class Pdf extends Component
      */
     public function loadHtml($html)
     {
-        $this->inputSource = '-';
-        $this->inputHtml = $html;
+        $this->tmpInputFile = tempnam($this->tmpDir, '');
+        $newName = $this->tmpDir . basename($this->tmpInputFile) . '.html';
+        rename($this->tmpInputFile, $newName);
+        $this->tmpInputFile = $newName;
+
+        $handle = fopen($this->tmpInputFile, 'w');
+        fwrite($handle, $html);
+        fclose($handle);
+
+        $this->inputSource = $this->tmpInputFile;
 
         return $this;
     }
@@ -103,14 +117,15 @@ class Pdf extends Component
     }
 
     /**
-     * @params array $options
+     * @param array $options
      * @return array
+     * @throws PdfException
      */
     protected function parseOptions(array $options)
     {
         $result = [];
         foreach ($options as $key => $value) {
-            if (is_string($value)) {
+            if (is_string($value) || is_numeric($value)) {
                 $result[] = '--' . $this->uncamelize($key) . ' ' . $value;
             } elseif (is_array($value)) {
                 $result[] = '--' . $this->uncamelize($key) . ' ' . implode(' ', $value);
@@ -152,14 +167,7 @@ class Pdf extends Component
         }
 
     	$this->command .= ' ' . $this->inputSource;
-
-    	$this->tmpDir = Yii::getAlias($this->tmpDir);
-    	if (!is_dir($this->tmpDir)) {
-    	    @mkdir($this->tmpDir, 0755, true);
-        }
-
-        $this->tmpFile = tempnam($this->tmpDir, 'pdf-');
-    	$this->outputSource = $this->tmpFile;
+        $this->outputSource = tempnam($this->tmpDir, '');
     	$this->command .= ' ' . $this->outputSource;
     }
 
@@ -171,31 +179,17 @@ class Pdf extends Component
     {
         $this->createCommand();
 
-    	$process = proc_open($this->command, [
-    			['pipe', 'r'],
-    			['pipe', 'w'],
-    			['pipe', 'w']
-    		], $pipes);
+        $process = proc_open($this->command, [2 => ['pipe', 'w']], $pipes);
 
     	if (is_resource($process)) {
-    	    if ($this->inputSource === '-') {
-                fwrite($pipes[0], $this->inputHtml);
-                fclose($pipes[0]);
-            }
-
-//            $output = stream_get_contents($pipes[1]);
-//            fclose($pipes[1]);
-
             $this->error = stream_get_contents($pipes[2]);
             fclose($pipes[2]);
 
             $this->errorCode = proc_close($process);
 
-            if ($this->errorCode !== 0) {
-                $this->error = substr($this->error, 0, strpos($this->error, "\n\n"));
-
-                throw new PdfException($this->error);
-            }
+//            if ($this->errorCode !== 0) {
+//                throw new PdfException($this->error);
+//            }
 
             return $this;
         }
@@ -210,8 +204,9 @@ class Pdf extends Component
     public function getFile($fileName = '')
     {
         if ($fileName !== '') {
-            rename($this->tmpFile, $this->tmpDir . $fileName);
-            $this->outputSource = $this->tmpDir . $fileName;
+            $newName = $this->tmpDir . $fileName;
+            rename($this->outputSource, $newName);
+            $this->outputSource = $newName;
         }
 
         return $this->outputSource;
