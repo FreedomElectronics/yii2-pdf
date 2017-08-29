@@ -39,6 +39,9 @@ class Pdf extends Component
 
     /** @var int $errorCode */
     protected $errorCode = 0;
+    
+    /** @var bool $removeFile */
+    protected $removeFile = false;
 
     /**
      * @inheritdoc
@@ -55,16 +58,18 @@ class Pdf extends Component
         if (!is_dir($this->tmpDir)) {
             mkdir($this->tmpDir, 0755, true);
         }
-
-        register_shutdown_function(function () {
-            if ($this->tmpInputFile !== '') {
-                unlink($this->tmpInputFile);
-            }
-
-            unlink($this->outputSource);
-        });
     }
 
+    /**
+     * @return $this
+     */
+    public function removeFile()
+    {
+        $this->removeFile = true;
+        
+        return $this;
+    }
+    
     /**
      * @param string $html
      * @return $this
@@ -219,5 +224,18 @@ class Pdf extends Component
     public function sendFile($fileName = '')
     {
         Yii::$app->response->sendFile($this->outputSource, $fileName);
+    }
+    
+    public function __destruct()
+    {
+        if ($this->removeFile) {
+            register_shutdown_function(function () {
+                if ($this->tmpInputFile !== '') {
+                    unlink($this->tmpInputFile);
+                }
+
+                unlink($this->outputSource);
+            });
+        }
     }
 }
