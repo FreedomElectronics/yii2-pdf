@@ -39,9 +39,6 @@ class Pdf extends Component
 
     /** @var int $errorCode */
     protected $errorCode = 0;
-    
-    /** @var bool $removeFile */
-    protected $removeFile = false;
 
     /**
      * @inheritdoc
@@ -65,11 +62,17 @@ class Pdf extends Component
      */
     public function removeFile()
     {
-        $this->removeFile = true;
-        
+        register_shutdown_function(function () {
+            unlink($this->outputSource);
+
+            if (dirname($this->outputSource) . '/' !== $this->tmpDir) {
+                rmdir(dirname($this->outputSource));
+            }
+        });
+
         return $this;
     }
-    
+
     /**
      * @param string $html
      * @return $this
@@ -167,13 +170,14 @@ class Pdf extends Component
      */
     protected function createCommand()
     {
-    	if ($this->params !== '') {
-    	    $this->command .= ' ' . $this->params;
+        if ($this->params !== '') {
+            $this->command .= ' ' . $this->params;
         }
 
-    	$this->command .= ' ' . $this->inputSource;
+        $this->command .= ' ' . $this->inputSource;
         $this->outputSource = tempnam($this->tmpDir, '');
-    	$this->command .= ' ' . $this->outputSource;
+        chmod($this->outputSource, 0755);
+        $this->command .= ' ' . $this->outputSource;
     }
 
     /**
@@ -186,15 +190,21 @@ class Pdf extends Component
 
         $process = proc_open($this->command, [2 => ['pipe', 'w']], $pipes);
 
-    	if (is_resource($process)) {
+        if (is_resource($process)) {
             $this->error = stream_get_contents($pipes[2]);
             fclose($pipes[2]);
 
             $this->errorCode = proc_close($process);
 
-//            if ($this->errorCode !== 0) {
-//                throw new PdfException($this->error);
-//            }
+            /*if ($this->errorCode !== 0) {
+                throw new PdfException($this->error);
+            }*/
+
+            if ($this->tmpInputFile !== '') {
+                unlink($this->tmpInputFile);
+            }
+
+            $this->command = 'wkhtmltopdf';
 
             return $this;
         }
@@ -209,8 +219,13 @@ class Pdf extends Component
     public function getFile($fileName = '')
     {
         if ($fileName !== '') {
-            $newName = $this->tmpDir . $fileName;
+            $uniqid = uniqid();
+            $tmpDir = $this->tmpDir . $uniqid;
+            mkdir($tmpDir, 0755);
+
+            $newName = $tmpDir . '/' . $fileName;
             rename($this->outputSource, $newName);
+
             $this->outputSource = $newName;
         }
 
@@ -224,18 +239,5 @@ class Pdf extends Component
     public function sendFile($fileName = '')
     {
         Yii::$app->response->sendFile($this->outputSource, $fileName);
-    }
-    
-    public function __destruct()
-    {
-        if ($this->removeFile) {
-            register_shutdown_function(function () {
-                if ($this->tmpInputFile !== '') {
-                    unlink($this->tmpInputFile);
-                }
-
-                unlink($this->outputSource);
-            });
-        }
     }
 }
