@@ -1,10 +1,7 @@
 <?php
-
 namespace junqi\pdf;
-
 use Yii;
 use yii\base\Component;
-
 /**
  * A wrapper class for wkhtmltopdf
  *
@@ -15,48 +12,38 @@ class Pdf extends Component
 {
     /** @var string $tmpDir */
     public $tmpDir = '@runtime/tmp-pdf/';
-
     /** @var array $options */
     public $options = [];
-
     /** @var string $params */
     protected $params = '';
-
     /** @var string $command */
     protected $command = '';
-
     /** @var string $inputSource */
     protected $inputSource = '';
-
     /** @var string $tmpInputFile */
     protected $tmpInputFile = '';
-
     /** @var string $outputSource */
     protected $outputSource = '';
-
     /** @var string $error */
     protected $error = '';
-
     /** @var int $errorCode */
     protected $errorCode = 0;
-
     /**
      * @inheritdoc
      */
     public function init()
     {
         parent::init();
-
         $this->command = 'wkhtmltopdf';
         $this->initOptions();
         $this->buildParams();
-
         $this->tmpDir = rtrim(Yii::getAlias($this->tmpDir), '/') . '/';
         if (!is_dir($this->tmpDir)) {
-            mkdir($this->tmpDir, 0755, true);
+            $old = umask(0);
+            mkdir($this->tmpDir, 0777, true);
+            umask($old);
         }
     }
-
     /**
      * @return $this
      */
@@ -64,15 +51,12 @@ class Pdf extends Component
     {
         register_shutdown_function(function () {
             unlink($this->outputSource);
-
             if (dirname($this->outputSource) . '/' !== $this->tmpDir) {
                 rmdir(dirname($this->outputSource));
             }
         });
-
         return $this;
     }
-
     /**
      * @param string $html
      * @return $this
@@ -83,16 +67,12 @@ class Pdf extends Component
         $newName = $this->tmpDir . basename($this->tmpInputFile) . '.html';
         rename($this->tmpInputFile, $newName);
         $this->tmpInputFile = $newName;
-
         $handle = fopen($this->tmpInputFile, 'w');
         fwrite($handle, $html);
         fclose($handle);
-
         $this->inputSource = $this->tmpInputFile;
-
         return $this;
     }
-
     /**
      * @param string $resource HTML page
      * @return $this
@@ -100,10 +80,8 @@ class Pdf extends Component
     public function loadResource($resource)
     {
         $this->inputSource = $resource;
-
         return $this;
     }
-
     /**
      * @param array $options
      * @return $this
@@ -112,10 +90,8 @@ class Pdf extends Component
     {
         $this->options = array_merge($this->options, $this->parseOptions($options));
         $this->buildParams();
-
         return $this;
     }
-
     /**
      * @return void
      */
@@ -123,7 +99,6 @@ class Pdf extends Component
     {
         $this->options = $this->parseOptions($this->options);
     }
-
     /**
      * @param array $options
      * @return array
@@ -143,10 +118,8 @@ class Pdf extends Component
                 throw new PdfException('Unsupported type for pdf options.');
             }
         }
-
         return $result;
     }
-
     /**
      * @param string $str
      * @param string $delimiter
@@ -156,7 +129,6 @@ class Pdf extends Component
     {
         return strtolower(preg_replace('/([a-z])([A-Z])/', "$1" . $delimiter . "$2", $str));
     }
-
     /**
      * @return void
      */
@@ -164,7 +136,6 @@ class Pdf extends Component
     {
         $this->params = implode(' ', $this->options);
     }
-
     /**
      * @return void
      */
@@ -173,13 +144,11 @@ class Pdf extends Component
         if ($this->params !== '') {
             $this->command .= ' ' . $this->params;
         }
-
         $this->command .= ' ' . $this->inputSource;
         $this->outputSource = tempnam($this->tmpDir, '');
-        chmod($this->outputSource, 0755);
+        chmod($this->outputSource, 0777);
         $this->command .= ' ' . $this->outputSource;
     }
-
     /**
      * @return $this
      * @throws PdfException
@@ -187,31 +156,22 @@ class Pdf extends Component
     public function execute()
     {
         $this->createCommand();
-
         $process = proc_open($this->command, [2 => ['pipe', 'w']], $pipes);
-
         if (is_resource($process)) {
             $this->error = stream_get_contents($pipes[2]);
             fclose($pipes[2]);
-
             $this->errorCode = proc_close($process);
-
             /*if ($this->errorCode !== 0) {
                 throw new PdfException($this->error);
             }*/
-
             if ($this->tmpInputFile !== '') {
                 unlink($this->tmpInputFile);
             }
-
             $this->command = 'wkhtmltopdf';
-
             return $this;
         }
-
         throw new PdfException('Process could not be open.');
     }
-
     /**
      * @param string $fileName
      * @return string
@@ -221,17 +181,15 @@ class Pdf extends Component
         if ($fileName !== '') {
             $uniqid = uniqid();
             $tmpDir = $this->tmpDir . $uniqid;
-            mkdir($tmpDir, 0755);
-
+            $old = umask(0);
+            mkdir($tmpDir, 0777);
+            umask($old);
             $newName = $tmpDir . '/' . $fileName;
             rename($this->outputSource, $newName);
-
             $this->outputSource = $newName;
         }
-
         return $this->outputSource;
     }
-
     /**
      * @param string $fileName
      * @return void
